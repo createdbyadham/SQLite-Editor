@@ -24,4 +24,3 @@ electron_1.contextBridge.exposeInMainWorld('electron', {
     },
 });
 console.log('Preload script completed, electron API exposed');
-//# sourceMappingURL=preload.js.map

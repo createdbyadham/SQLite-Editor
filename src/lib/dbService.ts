@@ -73,7 +73,7 @@ class DbService {
           if (!window.initSqlJs) {
             console.log("Loading SQL.js script");
             const script = document.createElement('script');
-            script.src = '/sql-wasm.js';
+            script.src = process.env.NODE_ENV === 'production' ? './sql-wasm.js' : '/sql-wasm.js';
             script.async = true;
             document.body.appendChild(script);
 
@@ -96,7 +96,7 @@ class DbService {
           this.SQL = await window.initSqlJs({
             locateFile: (file: string) => {
               console.log("Locating file:", file);
-              return `/${file}`;
+              return process.env.NODE_ENV === 'production' ? `./${file}` : `/${file}`;
             }
           });
 

@@ -4,12 +4,18 @@ import * as fs from 'fs';
 
 let mainWindow: BrowserWindow | null = null;
 
+const isDev = process.env.NODE_ENV === 'development';
+const getAssetPath = (...paths: string[]): string => {
+  const basePath = isDev ? process.cwd() : path.join(process.resourcesPath, 'app');
+  return path.join(basePath, ...paths);
+};
+
 const createWindow = () => {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     frame: false, // Remove default window frame
-    icon: path.join(__dirname, '../public/appicon.png'),
+    icon: getAssetPath('public', 'appicon.png'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -20,15 +26,22 @@ const createWindow = () => {
 
   console.log('Created main window with preload script:', path.join(__dirname, 'preload.js'));
 
-  // In development, use the Vite dev server
-  if (process.env.NODE_ENV === 'development') {
+  if (isDev) {
     console.log('Running in development mode, loading from localhost:3000');
     mainWindow.loadURL('http://localhost:3000');
     mainWindow.webContents.openDevTools();
   } else {
-    // In production, load the built files
-    console.log('Running in production mode, loading from dist/index.html');
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    console.log('Running in production mode');
+    const indexPath = path.join(__dirname, '..', 'dist', 'index.html');
+    console.log('Loading index from:', indexPath);
+    mainWindow.loadFile(indexPath).catch(console.error);
+    
+    // Handle any navigation errors
+    mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+      console.error('Failed to load:', errorCode, errorDescription);
+      console.log('Attempting to reload...');
+      mainWindow?.loadFile(indexPath).catch(console.error);
+    });
   }
 
   mainWindow.webContents.on('did-finish-load', () => {

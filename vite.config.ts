@@ -15,13 +15,17 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-  base: process.env.NODE_ENV === 'development' ? '/' : './',
+  base: "",
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    assetsDir: "assets",
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html'),
+      },
+      output: {
+        manualChunks: undefined,
       },
     },
   },

@@ -3,14 +3,24 @@
   "private": true,
   "version": "1.0.0",
   "main": "dist-electron/main.js",
+  "description": "LightDB - A simple and lightweight database viewer/editor for your projects",
+  "author": "Adham Ehab",
+  "contributors": [
+    {
+      "name": "Adham Ehab",
+      "email": "createdbyadham@gmail.com"
+    }
+  ],
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && electron-builder",
-    "build:dev": "vite build --mode development",
+    "build": "tsc && vite build",
     "lint": "eslint .",
+    "electron:dev": "tsc -p electron/tsconfig.json && concurrently -k \"cross-env BROWSER=none ELECTRON=true vite\" \"wait-on tcp:3000 && cross-env NODE_ENV=development electron .\"",
+    "electron:build": "npm run build && tsc -p electron/tsconfig.json && electron-builder",
+    "electron:preview": "electron .",
     "preview": "vite preview",
-    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:3000 && tsc -p electron/tsconfig.electron.json && cross-env NODE_ENV=development electron .\"",
-    "electron:build": "tsc -p electron/tsconfig.electron.json && electron-builder"
+    "start": "cross-env PUPPETEER_EXECUTABLE_PATH=\"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" node src/index.js",
+    "postbuild": "copy public\\sql-wasm.* dist\\ && copy public\\icon.png dist\\"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.5",
@@ -75,8 +85,8 @@
     "autoprefixer": "^10.4.20",
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
-    "electron": "^35.0.1",
-    "electron-builder": "^25.1.8",
+    "electron": "^34.0.2",
+    "electron-builder": "^24.13.3",
     "eslint": "^9.9.0",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
     "eslint-plugin-react-refresh": "^0.4.9",
@@ -88,34 +98,50 @@
     "vite": "^5.4.1",
     "wait-on": "^8.0.2"
   },
-  "description": "## Project info",
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "build": {
-    "appId": "com.LightDB",
+    "appId": "com.lightdb.app",
     "productName": "LightDB",
     "directories": {
-      "output": "release"
+      "output": "release/${version}",
+      "buildResources": "assets"
     },
     "files": [
       "dist/**/*",
-      "dist-electron/**/*"
+      "dist-electron/**/*",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+      "!**/node_modules/.bin",
+      "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}",
+      "!.editorconfig",
+      "!**/._*",
+      "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}",
+      "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "dist-electron/preload.js",
+      "dist-electron/preload.js.map"
     ],
     "win": {
+      "icon": "public/favicon.ico",
       "target": [
-        "nsis"
-      ]
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}_${version}.${ext}"
     },
-    "mac": {
-      "target": [
-        "dmg"
-      ]
-    },
-    "linux": {
-      "target": [
-        "AppImage"
-      ]
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false
     }
   }
 }
