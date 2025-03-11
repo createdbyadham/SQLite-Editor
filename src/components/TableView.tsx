@@ -1,0 +1,358 @@
+import { useState, useEffect } from 'react';
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { 
+  ArrowUpDown, 
+  Search, 
+  Info, 
+  Database, 
+  ChevronLeft, 
+  ChevronRight 
+} from 'lucide-react';
+import { ColumnInfo, RowData, dbService } from '@/lib/dbService';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { EditDialog } from '@/components/EditDialog';
+import { toast } from '@/hooks/use-toast';
+
+interface TableViewProps {
+  tableName: string;
+  columns: string[];
+  columnInfo: ColumnInfo[];
+  rows: RowData[];
+  onUpdateRow?: (oldRow: RowData, newRow: RowData) => Promise<boolean>;
+}
+
+const TableView = ({ tableName, columns, columnInfo, rows, onUpdateRow }: TableViewProps) => {
+  const [filteredRows, setFilteredRows] = useState<RowData[]>([]);
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [editingRow, setEditingRow] = useState<RowData | null>(null);
+  const rowsPerPage = 100;
+  
+  // Reset state when table changes
+  useEffect(() => {
+    setFilteredRows([]);
+    setSortColumn(null);
+    setSortDirection('asc');
+    setSearchQuery('');
+    setCurrentPage(1);
+  }, [tableName]);
+  
+  // Update filtered rows when data changes
+  useEffect(() => {
+    let result = [...rows];
+    
+    // Apply search filter
+    if (searchQuery) {
+      const lowerQuery = searchQuery.toLowerCase();
+      result = result.filter(row => 
+        Object.entries(row).some(([_, value]) => 
+          String(value).toLowerCase().includes(lowerQuery)
+        )
+      );
+    }
+    
+    // Apply sorting
+    if (sortColumn) {
+      result.sort((a, b) => {
+        const valueA = a[sortColumn];
+        const valueB = b[sortColumn];
+        
+        // Handle null values
+        if (valueA === null && valueB === null) return 0;
+        if (valueA === null) return sortDirection === 'asc' ? -1 : 1;
+        if (valueB === null) return sortDirection === 'asc' ? 1 : -1;
+        
+        // Check if values are numbers
+        const numA = Number(valueA);
+        const numB = Number(valueB);
+        
+        if (!isNaN(numA) && !isNaN(numB)) {
+          return sortDirection === 'asc' ? numA - numB : numB - numA;
+        }
+        
+        // Otherwise sort as strings
+        const strA = String(valueA);
+        const strB = String(valueB);
+        
+        return sortDirection === 'asc' 
+          ? strA.localeCompare(strB) 
+          : strB.localeCompare(strA);
+      });
+    }
+    
+    setFilteredRows(result);
+  }, [rows, searchQuery, sortColumn, sortDirection]);
+  
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+  
+  const totalPages = Math.ceil(filteredRows.length / rowsPerPage);
+  const paginatedRows = filteredRows.slice(
+    (currentPage - 1) * rowsPerPage, 
+    currentPage * rowsPerPage
+  );
+  
+  // Map column names to their info
+  const columnInfoMap = columnInfo.reduce((acc, info) => {
+    acc[info.name] = info;
+    return acc;
+  }, {} as Record<string, ColumnInfo>);
+  
+  // Get the primary key column (if any)
+  const primaryKeyColumn = columnInfo.find(col => col.pk === 1)?.name;
+  
+  const formatCellValue = (value: unknown) => {
+    if (value === null) return <span className="text-muted-foreground italic">NULL</span>;
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  };
+  
+  const getColumnTypeLabel = (colName: string) => {
+    const info = columnInfoMap[colName];
+    if (!info) return null;
+    
+    const label = info.type || 'TEXT';
+    
+    const badges = [];
+    
+    if (info.pk) {
+      badges.push(<Badge key="pk" variant="destructive" className="ml-1">PK</Badge>);
+    }
+    
+    if (info.notnull) {
+      badges.push(<Badge key="nn" variant="outline" className="ml-1">NOT NULL</Badge>);
+    }
+    
+    return (
+      <div className="flex items-center text-xs">
+        <span className="text-muted-foreground">{label}</span>
+        {badges}
+      </div>
+    );
+  };
+
+  const handleRowDoubleClick = (row: RowData) => {
+    if (!onUpdateRow) return;
+    // Create a copy of the row data to avoid reference issues
+    setEditingRow({ ...row });
+  };
+
+  const handleRowUpdate = async (updatedRow: RowData) => {
+    if (!editingRow || !onUpdateRow) return;
+    
+    try {
+      const success = await onUpdateRow(editingRow, updatedRow);
+      if (success) {
+        toast({
+          title: "Success",
+          description: "Row updated successfully",
+        });
+        // Update the local state
+        setFilteredRows(prev => 
+          prev.map(row => {
+            const primaryKey = columnInfo.find(col => col.pk === 1)?.name;
+            if (primaryKey && row[primaryKey] === editingRow[primaryKey]) {
+              return updatedRow;
+            }
+            return row;
+          })
+        );
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update row",
+        variant: "destructive"
+      });
+    } finally {
+      setEditingRow(null);
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-screen animate-fade-in">
+      <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center space-x-2">
+            <Database className="h-5 w-5 text-primary/80" />
+            <h1 className="text-xl font-semibold tracking-tight">{tableName}</h1>
+            <Badge variant="outline" className="ml-2">
+              {filteredRows.length} {filteredRows.length === 1 ? 'row' : 'rows'}
+            </Badge>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              className="h-10 px-2"
+              onClick={async () => {
+                const data = dbService.exportDatabase();
+                console.log('Exporting database data:', data);
+                if (data && window.electron) {
+                  // If we don't have a current file path, show save dialog
+                  if (!dbService.currentFilePath) {
+                    toast({
+                      title: "Error", 
+                      description: "No database file loaded. Please load a database file first.",
+                      variant: "destructive"
+                    });
+                    return;
+                  }
+
+                  console.log('Current file path:', dbService.currentFilePath);
+                  const result = await window.electron.saveDatabase(dbService.currentFilePath, data);
+                  console.log('Save result:', result);
+                  if (result.success) {
+                    toast({ title: "Success", description: "Database saved successfully" });
+                  } else if (result.error !== 'Save cancelled') {
+                    toast({ title: "Error", description: result.error || "Failed to save database", variant: "destructive" });
+                  }
+                }
+              }}
+            >
+              Save Changes
+            </Button>
+            <div className="relative w-64">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search table..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <ScrollArea className="flex-1">
+        <div className="relative">
+          <Table className="min-w-max">
+            <TableHeader className="sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 z-10">
+              <TableRow>
+                {columns.map((column) => (
+                  <TableHead key={column} className="whitespace-nowrap">
+                    <div className="flex items-center space-x-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleSort(column)}
+                        className="h-8 px-2 text-left font-medium"
+                      >
+                        {column}
+                        {sortColumn === column && (
+                          <ArrowUpDown 
+                            className={`ml-1 h-3.5 w-3.5 transition-transform ${
+                              sortDirection === 'desc' ? 'rotate-180' : ''
+                            }`} 
+                          />
+                        )}
+                      </Button>
+                      
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-6 w-6">
+                              <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent align="start" className="max-w-sm">
+                            {getColumnTypeLabel(column)}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {paginatedRows.length > 0 ? (
+                paginatedRows.map((row, rowIndex) => (
+                  <TableRow 
+                    key={primaryKeyColumn && row[primaryKeyColumn] ? String(row[primaryKeyColumn]) : rowIndex}
+                    className="hover:bg-muted/30 cursor-pointer"
+                    onDoubleClick={() => handleRowDoubleClick(row)}
+                  >
+                    {columns.map((column) => (
+                      <TableCell key={column} className="whitespace-nowrap">
+                        {formatCellValue(row[column])}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell 
+                    colSpan={columns.length} 
+                    className="h-32 text-center text-muted-foreground"
+                  >
+                    No results found
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </ScrollArea>
+      
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between px-4 py-2 border-t">
+          <div className="text-sm text-muted-foreground">
+            Page {currentPage} of {totalPages}
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <EditDialog
+        open={editingRow !== null}
+        onOpenChange={(open) => !open && setEditingRow(null)}
+        row={editingRow ?? {}}
+        columns={columns}
+        columnInfo={columnInfo}
+        onSave={handleRowUpdate}
+      />
+    </div>
+  );
+};
+
+export default TableView;
